@@ -177,7 +177,6 @@
         })
         .attr("d", path)
         .on("mouseover", function (d, i) {
-          d3.select(this).attr("fill", "grey").attr("stroke-width", 2);
           return tooltip.style("hidden", false).html(d.name);
         })
         .on("mousemove", function (d) {
@@ -188,12 +187,7 @@
             .html(d.name);
         })
         .on("mouseout", function (d, i) {
-          d3.select(this)
-            .attr("fill", function (d) {
-              var value = colorData[d.properties.iso_a3] || 0; // Default to 0 if no data available
-              return colorScale(value);
-            })
-            .attr("stroke-width", 1);
+          
           tooltip.classed("hidden", true);
         })
         .on("click", function (d) {
