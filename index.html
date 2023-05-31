@@ -33,73 +33,115 @@
 
   <script>
     var margin = { top: 10, right: 10, bottom: 10, left: 10 };
-var width = 960 - margin.left - margin.right;
-var height = 500 - margin.top - margin.bottom;
-var projection = d3
-  .geoNaturalEarth1()
-  .center([0, 15])
-  .rotate([-9, 0])
-  .scale([1300 / (2 * Math.PI)])
-  .translate([450, 300]);
-var path = d3.geoPath().projection(projection);
-var svg = d3
-  .select("svg")
-  .append("g")
-  .attr("width", width)
-  .attr("height", height);
-var tooltip = d3.select("div.tooltip");
-var zoom = d3.zoom().scaleExtent([1, 10]).on("zoom", zoomed);
-svg.call(zoom);
+    var width = 960 - margin.left - margin.right;
+    var height = 500 - margin.top - margin.bottom;
+    var projection = d3
+      .geoNaturalEarth1()
+      .center([0, 15])
+      .rotate([-9, 0])
+      .scale([1300 / (2 * Math.PI)])
+      .translate([450, 300]);
+    var path = d3.geoPath().projection(projection);
+    var svg = d3
+      .select("svg")
+      .append("g")
+      .attr("width", width)
+      .attr("height", height);
+    var tooltip = d3.select("div.tooltip");
+    var zoom = d3.zoom().scaleExtent([1, 10]).on("zoom", zoomed);
+    svg.call(zoom);
 
-var colorScale = d3
-  .scaleSequential(d3.interpolateViridis)
-  .domain([0, 65000]);
+    var colorScale = d3
+      .scaleSequential(d3.interpolateViridis)
+      .domain([0, 1000]);
 
-var colorData = {};
+    var colorData = {};
 
-d3.queue()
-  .defer(d3.json, "world-110m.json")
-  .defer(d3.csv, "world-country-names.csv")
-  .defer(d3.json, "dataset.json")
-  .await(ready);
+    d3.queue()
+      .defer(d3.json, "world-110m.json")
+      .defer(d3.csv, "world-country-names.csv")
+      .defer(d3.json, "dataset.json")
+      .await(ready);
 
-function ready(error, world, names, dataset) {
-  if (error) throw error;
+    function ready(error, world, names, dataset) {
+      if (error) throw error;
 
-  var data1996 = dataset.filter(function(d) {
-    return d.year === 1996;
-  });
+      var data1996 = dataset.filter(function (d) {
+        return d.year === 1996;
+      });
 
-  console.log("Color Data:", colorData);
+      // Process the dataset and store it in a variable
+      var dataset = data1996.map(function (d) {
+        return {
+          iso_code: d.iso_code,
+          year: +d.year,
+          fuel: d.fuel,
+          production: +d.production,
+        };
+      });
 
-  data1996.forEach(function(d) {
-    var country = names.find(function(n) {
-      return n["alpha-3"] === d.iso_code;
-    });
+      // Calculate the maximum production value from the dataset
+      var maxProduction = d3.max(dataset, function (d) {
+        return d.production;
+      });
+      console.log("max prod: ",maxProduction);
+      // Define the color scale based on the maximum production value
+      var colorScale = d3
+        .scaleOrdinal()
+        .domain([0, maxProduction])
+        .range([
+          "#00876c",
+          "#539e6e",
+          "#87b573",
+          "#bbca7d",
+          "#efdd8f",
+          "#edb96c",
+          "#e99356",
+          "#e26a4e",
+          "#d43d51",
+        ]);
 
-    if (country) {
-      var isoAlpha3 = country["alpha-3"];
-      colorData[isoAlpha3] = d.fuel === "coal" ? d.production : 0;
+      console.log("Color Data:", colorData);
 
-      console.log("Fuel:", d.fuel, "Production:", d.production);
-    }
-  });
+      data1996.forEach(function (d) {
+        var country = names.find(function (n) {
+          return n["alpha-3"] === d.iso_code;
+        });
 
-  console.log("Color Scale Domain:", colorScale.domain());
+        if (country) {
+          var isoAlpha3 = country["alpha-3"];
+          colorData[isoAlpha3] = d.fuel === "coal" ? d.production : 0;
 
-  var productionValues = data1996.map(function(d) {
-    return d.production;
-  });
-  console.log("Production Values:", productionValues);
+          console.log(
+            "Fuel:",
+            d.fuel,
+            "Production:",
+            d.production,
+            "Country:",
+            country,
+            "year",
+            d.year
+          );
+        }
+      });
 
-  var countries1 = topojson.feature(world, world.objects.countries).features;
-  var countries = countries1.filter(function(d) {
-    return names.some(function(n) {
-      if (d.id == n.id) return (d.name = n.name);
-    });
-  });
+      console.log("Color Scale Domain:", colorScale.domain());
 
+      var productionValues = data1996.map(function (d) {
+        return d.production;
+      });
+      console.log("Production Values:", productionValues);
 
+      var countries1 = topojson.feature(
+        world,
+        world.objects.countries
+      ).features;
+      var countries = countries1.filter(function (d) {
+        return names.some(function (n) {
+          if (d.id == n.id) return (d.name = n.name);
+        });
+      });
+      console.log("ctr", countries);
       svg
         .selectAll("path")
         .data(countries)
@@ -108,8 +150,29 @@ function ready(error, world, names, dataset) {
         .attr("stroke", "green")
         .attr("stroke-width", 1)
         .attr("fill", function (d) {
-          var isoAlpha3 = d.properties.iso_a3;
-          var value = colorData[isoAlpha3] || 0;
+          var countryId = d.id;
+          var matchingName = names.find(function (n) {
+            return n.id === countryId;
+          });
+          console.log("name: ", matchingName);
+          var isoAlpha3 = matchingName ? matchingName["alpha-3"] : null;
+          console.log("isoAlpha", isoAlpha3);
+          var productionValue = null;
+          if (isoAlpha3) {
+            var matchingData = dataset.find(function (data) {
+              return (
+                data.iso_code === isoAlpha3 &&
+                data.year === 1996 &&
+                data.fuel === "coal"
+              );
+            });
+            console.log("matchingData:", matchingData);
+            if (matchingData) {
+              productionValue = matchingData.production;
+            }
+          }
+          console.log("productionValue", productionValue);
+          var value = productionValue;
           return colorScale(value);
         })
         .attr("d", path)
