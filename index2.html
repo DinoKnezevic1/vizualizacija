@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+
+<head>
+    <meta charset="utf-8" />
+    <script src="https://d3js.org/d3.v4.min.js"></script>
+    <script src="https://d3js.org/topojson.v2.min.js"></script>
+    <script src="https://d3js.org/d3-queue.v3.min.js"></script>
+    <style>
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+        }
+
+        .map-container {
+            width: 100%;
+            height: 400px;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        .bar-container {
+            width: 48%;
+            height: 400px;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        .fuel-selection {
+            width: 48%;
+            height: 400px;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        .map {
+            width: 100%;
+            height: 100%;
+            margin: 0 auto;
+            background-color: #f2f2f2;
+        }
+
+        .bar {
+            width: 100%;
+            height: 100%;
+            padding: 10px;
+            background-color: #f2f2f2;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        div.tooltip {
+            color: #222;
+            background: #fff;
+            border-radius: 3px;
+            box-shadow: 0px 0px 2px 0px #a6a6a6;
+            padding: 0.2em;
+            text-shadow: #f5f5f5 0 1px 0;
+            opacity: 0.9;
+            position: absolute;
+        }
+
+        /* Style the container */
+        .fuel-selection {
+            background-color: #f2f2f2;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        /* Style the labels */
+        .fuel-selection label {
+            font-weight: bold;
+            margin-right: 10px;
+            font-size: 24px;
+        }
+
+        /* Style the select elements */
+        .fuel-selection select {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            font-size: 16px;
+            background-color: #fff;
+        }
+
+        /* Style the year-selection div */
+        .year-selection {
+            margin-top: 10px;
+        }
+
+        /* Style the year-select label */
+        .year-selection label {
+            font-weight: bold;
+            font-size: 24px;
+            margin-right: 10px;
+        }
+
+        /* Style the year-select select */
+        .year-selection select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            font-size: 16px;
+            background-color: #fff;
+        }
+
+        .header {
+            background-color: #333;
+            /* Dark background color */
+            color: #fff;
+            /* White text color */
+            padding: 20px;
+            text-align: center;
+            font-size: 48px;
+            font-weight: bold;
+        }
+
+        .legend {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #fff;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 10px;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 2;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            margin-right: 5px;
+            border: 1px solid #ccc;
+            border-radius: 50%;
+        }
+
+        .legend-label {
+            font-size: 14px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">World Energy Consumption</div>
+    <div class="container">
+        <div class="map-container">
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #00876c;"></div>
+                    <div class="legend-label">Low</div>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #d43d51;"></div>
+                    <div class="legend-label">High</div>
+                </div>
+            </div>
+            <svg class="map" id="mapp"></svg>
+        </div>
+        <div class="bar-container">
+            <svg class="bar" id="barr"></svg>
+            <div id="bar-chart"></div>
+        </div>
+        <div class="fuel-selection">
+            <label for="fuel-type">Select Fuel Type:</label>
+            <select id="fuel-type">
+                <option value="coal">Coal</option>
+                <option value="hydro">Hydro</option>
+                <option value="gas">Gas</option>
+                <option value="nuclear">Nuclear</option>
+                <option value="oil">Oil</option>
+                <option value="other_renewable">Other Renewable</option>
+                <option value="solar">Solar</option>
+                <option value="wind">Wind</option>
+            </select>
+            <div class="year-selection">
+                <label for="select-year">Select Year:</label>
+                <select id="select-year"></select>
+            </div>
+        </div>
+    </div>
+    <div class="tooltip"></div>
+
+    <script>
+        var margin = { top: 10, right: 10, bottom: 10, left: 10 };
+        var width = 1800;
+        var height = 200;
+
+        var yearSelected = 2010;
+        var fuelSelected = "oil";
+
+        var container = document.getElementById("mapp"); // Replace with the actual ID of your container
+
+        var containerWidth = 870; //container.clientWidth
+        var containerHeight = 600; //container.clientHeight
+
+        var projection = d3
+            .geoNaturalEarth1()
+            .center([0, 0])
+            .rotate([-9, 0])
+            .scale([1300 / (3.2 * Math.PI)])
+            .translate([950, 190]);
+        var path = d3.geoPath().projection(projection);
+        var svg = d3
+            .select("svg")
+            .append("g")
+            .attr("width", containerWidth)
+            .attr("height", containerHeight);
+        var tooltip = d3.select("div.tooltip");
+        var zoom = d3.zoom().scaleExtent([1, 10]).on("zoom", zoomed);
+        svg.call(zoom);
+
+        var colorScale = d3
+            .scaleSequential(d3.interpolateViridis)
+            .domain([0, 1000]);
+
+        var colorData = {};
+
+        d3.queue()
+            .defer(d3.json, "world-110m.json")
+            .defer(d3.csv, "world-country-names.csv")
+            .defer(d3.json, "dataset.json")
+            .await(ready);
+        function ready(error, world, names, dataset) {
+            if (error) throw error;
+
+            var dataUPDATEset = dataset;
+            var data1996 = dataset.filter(function (d) {
+                return d.year === yearSelected;
+            });
+            // Process the dataset and store it in a variable
+            var dataset = data1996.map(function (d) {
+                return {
+                    iso_code: d.iso_code,
+                    year: +d.year,
+                    fuel: d.fuel,
+                    production: +d.production,
+                };
+            });
+
+            // Calculate the maximum production value from the dataset
+            var maxProduction = d3.max(dataset, function (d) {
+                return d.production;
+            });
+            console.log("max prod: ", maxProduction);
+            // Define the color scale based on the maximum production value
+            var colorScale = d3
+                .scaleOrdinal()
+                .domain([0, maxProduction])
+                .range([
+                    "#00876c",
+                    "#539e6e",
+                    "#87b573",
+                    "#bbca7d",
+                    "#efdd8f",
+                    "#edb96c",
+                    "#e99356",
+                    "#e26a4e",
+                    "#d43d51",
+                ]);
+
+            console.log("Color Data:", colorData);
+
+            data1996.forEach(function (d) {
+                var country = names.find(function (n) {
+                    return n["alpha-3"] === d.iso_code;
+                });
+
+                if (country) {
+                    var isoAlpha3 = country["alpha-3"];
+                    colorData[isoAlpha3] = d.fuel === fuelSelected ? d.production : 0;
+
+                    // console.log(
+                    //   "Fuel:",
+                    //   d.fuel,
+                    //   "Production:",
+                    //   d.production,
+                    //   "Country:",
+                    //   country,
+                    //   "year",
+                    //   d.year
+                    // );
+                }
+            });
+
+            console.log("Color Scale Domain:", colorScale.domain());
+
+            var productionValues = data1996.map(function (d) {
+                return d.production;
+            });
+            console.log("Production Values:", productionValues);
+
+            var countries1 = topojson.feature(
+                world,
+                world.objects.countries
+            ).features;
+            var countries = countries1.filter(function (d) {
+                return names.some(function (n) {
+                    if (d.id == n.id) return (d.name = n.name);
+                });
+            });
+            console.log("ctr", countries);
+            svg
+                .selectAll("path")
+                .data(countries)
+                .enter()
+                .append("path")
+                .attr("stroke", "green")
+                .attr("stroke-width", 1)
+                .attr("fill", function (d) {
+                    var countryId = d.id;
+                    var matchingName = names.find(function (n) {
+                        return n.id === countryId;
+                    });
+                    //console.log("name: ", matchingName);
+                    var isoAlpha3 = matchingName ? matchingName["alpha-3"] : null;
+                    //console.log("isoAlpha", isoAlpha3);
+                    var productionValue = null;
+                    if (isoAlpha3) {
+                        var matchingData = dataset.find(function (data) {
+                            return (
+                                data.iso_code === isoAlpha3 &&
+                                data.year === yearSelected &&
+                                data.fuel === fuelSelected
+                            );
+                        });
+                        //console.log("matchingData:", matchingData);
+                        if (matchingData) {
+                            productionValue = matchingData.production;
+                        }
+                    }
+                    //console.log("productionValue", productionValue);
+                    var value = productionValue;
+                    return colorScale(value);
+                })
+                .attr("d", path)
+                .on("mouseover", function (d, i) {
+                    return tooltip.style("hidden", false).html(d.name);
+                })
+                .on("mousemove", function (d) {
+                    tooltip
+                        .classed("hidden", false)
+                        .style("top", d3.event.pageY + "px")
+                        .style("left", d3.event.pageX + 10 + "px")
+                        .html(d.name);
+                })
+                .on("mouseout", function (d, i) {
+                    tooltip.classed("hidden", true);
+                })
+                .on("click", function (d) {
+                    zoomToCountry(d);
+                });
+
+            //GRAPH
+            // Define  margin and dimensions for the bar chart
+            var margin = { top: 40, right: 30, bottom: 30, left: 40 };
+            var containerr = document.getElementById("barr"); // Replace with the actual ID of your container
+            var containerWidthh = 700; //containerr.clientWidth
+            var containerHeightt = 300;
+
+            //var width = 400 - margin.left - margin.right;
+            var heightbar = 300 - margin.top - margin.bottom;
+
+            // SVG element for the bar chart
+            var svgBar = d3
+                .select("svg.bar")
+                .append("svg")
+                .attr("width", containerWidthh + margin.left + margin.right)
+                .attr("height", containerHeightt + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+            // Filter the dataset for the year and fuel type to display (for example 1996 and coal)
+            var filteredData = dataset.filter(function (d) {
+                return d.year === yearSelected && d.fuel === fuelSelected;
+            });
+
+            // Sort the filtered data by production in descending order
+            filteredData.sort(function (a, b) {
+                return d3.descending(a.production, b.production);
+            });
+
+            // Take the top 10 countries
+            var top10Data = filteredData.slice(0, 10);
+
+            // Define the x and y scales for the bar chart
+            var x = d3
+                .scaleBand()
+                .domain(
+                    top10Data.map(function (d) {
+                        return d.iso_code;
+                    })
+                )
+                .range([0, containerWidthh])
+                .padding(0.1);
+
+            var y = d3
+                .scaleLinear()
+                .domain([
+                    0,
+                    d3.max(top10Data, function (d) {
+                        return d.production;
+                    }),
+                ])
+                .nice()
+                .range([containerHeightt, 0]);
+
+            var barWidth = containerWidthh / top10Data.length;
+
+            svgBar
+                .selectAll(".bar-rect")
+                .data(top10Data)
+                .enter()
+                .append("rect")
+                .attr("class", "bar-rect")
+                .attr("x", function (d, i) {
+                    return i * barWidth + margin.left; // Adjust for the left margin
+                })
+                .attr("y", function (d) {
+                    return y(d.production);
+                })
+                .attr("width", barWidth - margin.left) // Set the width of each bar
+                .attr("height", function (d) {
+                    return containerHeightt - y(d.production); // Calculate the bar height based on the y scale
+                })
+                .attr("fill", "red");
+
+            // Add x-axis
+            svgBar
+                .append("g")
+                .attr("class", "x-axis")
+                .attr("transform", "translate(0," + containerHeightt + ")")
+                .call(d3.axisBottom(x));
+
+            // Add y-axis
+            svgBar.append("g").attr("class", "y-axis").call(d3.axisLeft(y));
+
+            // Add labels for the x and y axes
+            svgBar
+                .append("text")
+                .attr("x", containerWidthh / 2)
+                .attr("y", containerHeightt)
+                .attr("text-anchor", "middle")
+                .text("Country");
+
+            svgBar
+                .append("text")
+                .attr("transform", "rotate(-90)")
+                .attr("x", -containerHeightt - margin.bottom - margin.top - 10)
+                .attr("y", 0)
+                .attr("text-anchor", "middle")
+                .text("Production (Million Tons)");
+
+            svgBar
+                .append("text")
+                .attr("x", containerWidthh / 2)
+                .attr("y", -margin.top + 20)
+                .attr("text-anchor", "middle")
+                .style("font-size", "24px")
+                .text("Top 10 Countries by Usage of " + fuelSelected + " in Million Tons");
+
+            //UPDATING THE GRAPHS AND MAP
+
+            selectYear.addEventListener("change", function () {
+                yearSelected = parseInt(this.value);
+                console.log("dataUPDATESET", dataUPDATEset);
+                var dataForUpdating = dataUPDATEset.filter(function (d) {
+                    return d.year === yearSelected;
+                });
+                console.log("dataforUpdating", dataForUpdating);
+                var datasetUpdate = dataForUpdating.map(function (d) {
+                    return {
+                        iso_code: d.iso_code,
+                        year: +d.year,
+                        fuel: d.fuel,
+                        production: +d.production,
+                    };
+                });
+                console.log("yearSelected: ", yearSelected);
+                var filteredData = datasetUpdate.filter(function (d) {
+                    return d.year === yearSelected && d.fuel === fuelSelected;
+                });
+                console.log("dataset before filtering:", dataset);
+                console.log("new dataset before filtering: ", datasetUpdate);
+                console.log("data sent for updating:", filteredData)
+                updateGraphsMaps(filteredData);
+                updateLegendLabels(filteredData);
+                updateLegendColors();
+            });
+            var dataForUpdatingLabels = dataUPDATEset.filter(function (d) {
+                    return d.year === yearSelected;
+                });
+                var datasetUpdateLabels = dataForUpdatingLabels.map(function (d) {
+                    return {
+                        iso_code: d.iso_code,
+                        year: +d.year,
+                        fuel: d.fuel,
+                        production: +d.production,
+                    };
+                });
+            var initialDataForLabels = datasetUpdateLabels.filter(function (d) {
+                    return d.year === yearSelected && d.fuel === fuelSelected;
+                });
+            document.getElementById("fuel-type").addEventListener("change", function () {
+                fuelSelected = this.value;
+                var dataForUpdating = dataUPDATEset.filter(function (d) {
+                    return d.year === yearSelected;
+                });
+                var datasetUpdate = dataForUpdating.map(function (d) {
+                    return {
+                        iso_code: d.iso_code,
+                        year: +d.year,
+                        fuel: d.fuel,
+                        production: +d.production,
+                    };
+                });
+                var filteredData = datasetUpdate.filter(function (d) {
+                    return d.year === yearSelected && d.fuel === fuelSelected;
+                });
+                updateGraphsMaps(filteredData);
+                updateLegendLabels(filteredData);
+                updateLegendColors();
+            });
+            //END UPDATING THE BAR AND MAP
+
+            //LEGEND SETUP
+            var legendLabels = ["0-100", "101-200", "201-300", "301-400", "401-500", "501-600", "601-700", "701-800", "801-900"];
+
+            // Create the color scale with a fixed number of categories
+            var colorScaleLegend = d3
+                .scaleOrdinal()
+                .domain(legendLabels) // Use the legendLabels array as the domain
+                .range([
+                    "#00876c",//green
+                    "#539e6e",
+                    "#87b573",
+                    "#bbca7d",
+                    "#efdd8f",
+                    "#edb96c",
+                    "#e99356",
+                    "#e26a4e",
+                    "#d43d51",
+                ]);
+            var customColorRange = [
+                "#00876c", // Green
+                "#539e6e",
+                "#87b573",
+                "#bbca7d",
+                "#efdd8f",
+                "#edb96c",
+                "#e99356",
+                "#e26a4e",
+                "#d43d51", // Red
+            ];
+            //LEGEND
+            function updateLegend(colorScaleLegend) {
+                var legend = d3.select(".legend");
+
+                // Remove existing legend items
+                legend.selectAll(".legend-item").remove();
+
+                // Create new legend items based on the legendLabels array
+                var legendItems = legend
+                    .selectAll(".legend-item")
+                    .data(legendLabels)
+                    .enter()
+                    .append("div")
+                    .attr("class", "legend-item");
+
+                // Add color swatches to legend items
+                legendItems
+                    .append("div")
+                    .attr("class", "legend-color")
+                    .style("background-color", function (d) {
+                        return colorScale(d);
+                    });
+
+                // Add labels to legend items
+                legendItems
+                    .append("div")
+                    .attr("class", "legend-label")
+                    .text(function (d) {
+                        return d;
+                    });
+            }
+            function updateLegendColors() {
+                var legendColorScale = d3
+                    .scaleOrdinal()
+                    .domain(legendLabels)
+                    .range(customColorRange);
+
+                // Update the legend colors using the custom color range
+                var legendItems = d3.selectAll(".legend-item");
+                legendItems.select(".legend-color").style("background-color", function (d) {
+                    return legendColorScale(d);
+                });
+            }
+            function updateLegendLabels(data) {
+                // You can calculate the legend labels dynamically based on your data
+                // For example, calculate min and max values from your data and create labels accordingly
+                var minValue = d3.min(data, function (d) {
+                    return d.production;
+                });
+                var maxValue = d3.max(data, function (d) {
+                    return d.production;
+                });
+
+                // Calculate the step size for creating labels
+                var stepSize = (maxValue - minValue) / 9;
+
+                // Update legendLabels array with new labels
+                legendLabels = [];
+                for (var i = 0; i < 9; i++) {
+                    var startValue = minValue + i * stepSize;
+                    var endValue = startValue + stepSize;
+                    legendLabels.push(startValue.toFixed(2) + "-" + endValue.toFixed(2));
+                }
+                updateLegend(colorScaleLegend);
+            }
+
+            //FUCTIONS TAKING CARE OF UPDATING
+            function updateGraphsMaps(data) {
+                console.log("data for update:", data);
+                // Remove existing bars
+                svgBar.selectAll(".bar-rect").remove();
+
+                data.sort(function (a, b) {
+                    return d3.descending(a.production, b.production);
+                });
+
+                var top10Data = data.slice(0, 10);
+                var x = d3
+                    .scaleBand()
+                    .domain(
+                        top10Data.map(function (d) {
+                            return d.iso_code;
+                        })
+                    )
+                    .range([0, containerWidthh])
+                    .padding(0.1);
+
+                var y = d3
+                    .scaleLinear()
+                    .domain([
+                        0,
+                        d3.max(top10Data, function (d) {
+                            return d.production;
+                        }),
+                    ])
+                    .nice()
+                    .range([containerHeightt, 0]);
+
+                var barWidth = containerWidthh / top10Data.length;
+
+                // Add new bars
+                var bars = svgBar.selectAll(".bar-rect").data(top10Data, function (d) {
+                    return d.iso_code;
+                });
+
+                // Enter new bars with transition
+                bars
+                    .enter()
+                    .append("rect")
+                    .attr("class", "bar-rect")
+                    .attr("x", function (d, i) {
+                        return i * barWidth + margin.left; // Adjust for the left margin
+                    })
+                    .attr("y", function (d) {
+                        return y(d.production);
+                    })
+                    .attr("width", barWidth - margin.left) // Set the width of each bar
+                    .attr("height", function (d) {
+                        return containerHeightt - y(d.production);
+                    })
+                    .attr("fill", "red")
+                    .transition()
+                    .duration(1000);
+
+                // Remove the existing x-axis
+                svgBar.select(".x-axis").remove();
+                // Add a new x-axis
+                svgBar
+                    .append("g")
+                    .attr("class", "x-axis")
+                    .attr("transform", "translate(0," + containerHeightt + ")")
+                    .call(d3.axisBottom(x));
+                // Update the y-axis
+                svgBar.select(".y-axis").call(d3.axisLeft(y));
+                // fun update map
+                //updateMapColors(data);
+                svg.selectAll("path")
+                    .data(countries)
+                    .transition()
+                    .duration(1000)
+                    .attr("fill", function (d) {
+                        var countryId = d.id;
+                        var matchingName = names.find(function (n) {
+                            return n.id === countryId;
+                        });
+
+                        var isoAlpha3 = matchingName ? matchingName["alpha-3"] : null;
+                        var productionValue = null;
+
+                        if (isoAlpha3) {
+                            var matchingData = data.find(function (data) {
+                                return (
+                                    data.iso_code === isoAlpha3 &&
+                                    data.year === yearSelected &&
+                                    data.fuel === fuelSelected
+                                );
+                            });
+
+                            if (matchingData) {
+                                productionValue = matchingData.production;
+                            }
+                        }
+
+                        var value = productionValue;
+                        return colorScale(value);
+                    });
+            }
+            //updateLegend(colorScale);
+            updateLegendLabels(initialDataForLabels);
+            updateLegend(colorScale);
+            updateLegendColors();
+            //END FUNCTIONS TAKING CARE OF UPDATING
+        }
+
+        function zoomToCountry(d) {
+            var bounds = path.bounds(d);
+            var dx = bounds[1][0] - bounds[0][0];
+            var dy = bounds[1][1] - bounds[0][1];
+            var x = (bounds[0][0] + bounds[1][0]) / 2;
+            var y = (bounds[0][1] + bounds[1][1]) / 2;
+            var scale = Math.max(
+                1,
+                Math.min(2, 0.9 / Math.max(dx / width, dy / height))
+            );
+            var translate = [width / 2 - scale * x, height / 2 - scale * y];
+
+            svg
+                .transition()
+                .duration(750)
+                .call(
+                    zoom.transform,
+                    d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale)
+                );
+        }
+
+        function zoomed() {
+            svg.selectAll("path").attr("transform", d3.event.transform);
+        }
+
+        var selectYear = document.getElementById("select-year");
+        for (var year = 1990; year <= 2019; year++) {
+            var option = document.createElement("option");
+            option.value = year;
+            option.text = year;
+            selectYear.appendChild(option);
+        }
+
+    </script>
+</body>
+
+</html>

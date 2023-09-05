@@ -1,19 +1,56 @@
 <!DOCTYPE html>
+
 <head>
   <meta charset="utf-8" />
   <script src="https://d3js.org/d3.v4.min.js"></script>
   <script src="https://d3js.org/topojson.v2.min.js"></script>
   <script src="https://d3js.org/d3-queue.v3.min.js"></script>
   <style>
-    svg {
+    .container {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+    }
+
+    .map-container {
+      width: 100%;
+      height: 400px;
+      padding: 10px;
+      box-sizing: border-box;
+    }
+
+    .bar-container {
+      width: 48%;
+      height: 400px;
+      padding: 10px;
+      box-sizing: border-box;
+    }
+
+    .fuel-selection {
+      width: 48%;
+      height: 400px;
+      padding: 10px;
+      box-sizing: border-box;
+    }
+
+    .map {
       width: 100%;
       height: 100%;
-      position: center;
-      background-color: #2b65ec;
+      margin: 0 auto;
+      background-color: #f2f2f2;
     }
+
+    .bar {
+      width: 100%;
+      height: 100%;
+      padding: 10px;
+      background-color: #f2f2f2;
+    }
+
     .hidden {
       display: none;
     }
+
     div.tooltip {
       color: #222;
       background: #fff;
@@ -28,25 +65,61 @@
 </head>
 
 <body>
-  <svg width="1200" height="900"></svg>
+  <div class="container">
+    <div class="map-container">
+      <svg class="map" id="mapp"></svg>
+    </div>
+    <div class="bar-container">
+      <svg class="bar" id="barr"></svg>
+      <div id="bar-chart"></div>
+    </div>
+    <div class="fuel-selection">
+      <label for="fuel-type">Select Fuel Type:</label>
+      <select id="fuel-type">
+        <option value="coal">Coal</option>
+        <option value="hydro">Hydro</option>
+        <option value="gas">Gas</option>
+        <option value="nuclear">Nuclear</option>
+        <option value="oil">Oil</option>
+        <option value="other_renewable">Other Renewable</option>
+        <option value="solar">Solar</option>
+        <option value="wind">Wind</option>
+        <!-- Add more fuel types as needed -->
+      </select>
+      <div class="year-selection">
+        <label for="select-year">Select Year:</label>
+        <select id="select-year"></select>
+      </div>
+    </div>
+  </div>
   <div class="tooltip"></div>
 
   <script>
+    var defaultFuelType = "coal";
     var margin = { top: 10, right: 10, bottom: 10, left: 10 };
-    var width = 960 - margin.left - margin.right;
-    var height = 500 - margin.top - margin.bottom;
+    var width = 1800;
+    var height = 200;
+
+    var yearSelected = 1990;
+    var fuelSelectedD = "coal";
+
+    var container = document.getElementById("mapp"); // Replace with the actual ID of your container
+
+    var containerWidth = 870; //container.clientWidth
+    var containerHeight = 600; //container.clientHeight
+
     var projection = d3
       .geoNaturalEarth1()
-      .center([0, 15])
+      .center([0, 0])
       .rotate([-9, 0])
-      .scale([1300 / (2 * Math.PI)])
-      .translate([450, 300]);
+      .scale([1300 / (3.2 * Math.PI)])
+      .translate([950, 190]);
     var path = d3.geoPath().projection(projection);
     var svg = d3
       .select("svg")
       .append("g")
-      .attr("width", width)
-      .attr("height", height);
+      .attr("width", containerWidth)
+      .attr("height", containerHeight);
     var tooltip = d3.select("div.tooltip");
     var zoom = d3.zoom().scaleExtent([1, 10]).on("zoom", zoomed);
     svg.call(zoom);
@@ -63,9 +136,9 @@
       .defer(d3.json, "dataset.json")
       .await(ready);
 
+    var datasetMain;
     function ready(error, world, names, dataset) {
       if (error) throw error;
-
       var data1996 = dataset.filter(function (d) {
         return d.year === 1996;
       });
@@ -79,12 +152,305 @@
           production: +d.production,
         };
       });
+      var datasetMain = data1996.map(function (d) {
+        return {
+          iso_code: d.iso_code,
+          year: +d.year,
+          fuel: d.fuel,
+          production: +d.production,
+        };
+      });
+
+      //GRAPH
+      // Define  margin and dimensions for the bar chart
+      var margin = { top: 40, right: 30, bottom: 30, left: 40 };
+      var containerr = document.getElementById("barr"); // Replace with the actual ID of your container
+      var containerWidthh = 700; //containerr.clientWidth
+      var containerHeightt = 300;
+
+      //var width = 400 - margin.left - margin.right;
+      var heightbar = 300 - margin.top - margin.bottom;
+
+      // SVG element for the bar chart
+      var svgBar = d3
+        .select("svg.bar")
+        .append("svg")
+        .attr("width", containerWidthh + margin.left + margin.right)
+        .attr("height", containerHeightt + margin.top + margin.bottom)
+        .append("g")
+        .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+      // Filter the dataset for the year and fuel type to display (for example 1996 and coal)
+      var filteredData = dataset.filter(function (d) {
+        return d.year === 1996 && d.fuel === "coal";
+      });
+
+      // Sort the filtered data by production in descending order
+      filteredData.sort(function (a, b) {
+        return d3.descending(a.production, b.production);
+      });
+
+      // Take the top 10 countries
+      var top10Data = filteredData.slice(0, 10);
+
+      // Define the x and y scales for the bar chart
+      var x = d3
+        .scaleBand()
+        .domain(
+          top10Data.map(function (d) {
+            return d.iso_code;
+          })
+        )
+        .range([0, containerWidthh])
+        .padding(0.1);
+
+      var y = d3
+        .scaleLinear()
+        .domain([
+          0,
+          d3.max(top10Data, function (d) {
+            return d.production;
+          }),
+        ])
+        .nice()
+        .range([containerHeightt, 0]);
+
+      var barWidth = containerWidthh / top10Data.length;
+
+      svgBar
+        .selectAll(".bar-rect")
+        .data(top10Data)
+        .enter()
+        .append("rect")
+        .attr("class", "bar-rect")
+        .attr("x", function (d, i) {
+          return i * barWidth + margin.left; // Adjust for the left margin
+        })
+        .attr("y", function (d) {
+          return y(d.production);
+        })
+        .attr("width", barWidth - margin.left) // Set the width of each bar
+        .attr("height", function (d) {
+          return containerHeightt - y(d.production); // Calculate the bar height based on the y scale
+        })
+        .attr("fill", "red");
+
+      // Add x-axis
+      svgBar
+        .append("g")
+        .attr("class", "x-axis")
+        .attr("transform", "translate(0," + containerHeightt + ")")
+        .call(d3.axisBottom(x));
+
+      // Add y-axis
+      svgBar.append("g").attr("class", "y-axis").call(d3.axisLeft(y));
+
+      // Add labels for the x and y axes
+      svgBar
+        .append("text")
+        .attr("x", containerWidthh / 2)
+        .attr("y", containerHeightt)
+        .attr("text-anchor", "middle")
+        .text("Country");
+
+      svgBar
+        .append("text")
+        .attr("transform", "rotate(-90)") 
+        .attr("x", -containerHeightt - margin.bottom - margin.top - 10)
+        .attr("y", 0) 
+        .attr("text-anchor", "middle")
+        .text("Production (Million Tons)");
+
+      svgBar
+        .append("text")
+        .attr("x", containerWidthh / 2)
+        .attr("y", -margin.top + 20)
+        .attr("text-anchor", "middle")
+        .text("Top 10 Countries by Usage");
+
+      //GRAPH END
+
+      //JOS UPDATEA
+      function filterData(selectedYear, selectedFuel) {
+        return dataset.filter(function (d) {
+          return d.year === selectedYear && d.fuel === selectedFuel;
+        });
+      }
+      //JOS KRAJ
+
+      //UPDATE
+      function updateBarChart(data) {
+        // Remove existing bars
+        svgBar.selectAll(".bar-rect").remove();
+
+        data.sort(function (a, b) {
+          return d3.descending(a.production, b.production);
+        });
+
+        var top10Data = data.slice(0, 10);
+        var x = d3
+          .scaleBand()
+          .domain(
+            top10Data.map(function (d) {
+              return d.iso_code;
+            })
+          )
+          .range([0, containerWidthh])
+          .padding(0.1);
+
+        var y = d3
+          .scaleLinear()
+          .domain([
+            0,
+            d3.max(top10Data, function (d) {
+              return d.production;
+            }),
+          ])
+          .nice()
+          .range([containerHeightt, 0]);
+
+        var barWidth = containerWidthh / top10Data.length;
+
+        // Add new bars
+        var bars = svgBar.selectAll(".bar-rect").data(top10Data, function (d) {
+          return d.iso_code;
+        });
+
+        // Enter new bars with transition
+        bars
+          .enter()
+          .append("rect")
+          .attr("class", "bar-rect")
+          .attr("x", function (d, i) {
+            return i * barWidth + margin.left; // Adjust for the left margin
+          })
+          .attr("y", function (d) {
+            return y(d.production);
+          })
+          .attr("width", barWidth - margin.left) // Set the width of each bar
+          .attr("height", function (d) {
+            return containerHeightt - y(d.production); // Calculate the bar height based on the y scale
+          })
+          .attr("fill", "red") // You can change the color as needed
+          .transition() // Add transition
+          .duration(1000); // Set transition duration to 1000 milliseconds (1 second)
+
+        // Remove the existing x-axis
+        svgBar.select(".x-axis").remove();
+
+        // Add a new x-axis
+        svgBar
+          .append("g")
+          .attr("class", "x-axis")
+          .attr("transform", "translate(0," + containerHeightt + ")")
+          .call(d3.axisBottom(x));
+
+        // Update the y-axis
+        svgBar.select(".y-axis").call(d3.axisLeft(y));
+
+        // Call the function to update map colors based on the new data
+        updateMapColors(data);
+      }
+
+      var selectYear = document.getElementById("select-year");
+
+      //UPDATE MAP
+      function updateMapColors(data) {
+        // Create a new color scale based on the maximum production value in the new data
+        var maxProduction = d3.max(data, function (d) {
+          return d.production;
+        });
+        console.log("new data data", data);
+        var newColorScale = d3
+          .scaleOrdinal()
+          .domain([0, maxProduction])
+          .range([
+            "#00876c",
+            "#539e6e",
+            "#87b573",
+            "#bbca7d",
+            "#efdd8f",
+            "#edb96c",
+            "#e99356",
+            "#e26a4e",
+            "#d43d51",
+          ]);
+
+        // Update the map colors based on the new data and color scale
+        svg.selectAll("path").attr("fill", function (d) {
+          var countryId = d.id;
+          var matchingName = names.find(function (n) {
+            return n.id === countryId;
+          });
+          var isoAlpha3 = matchingName ? matchingName["alpha-3"] : null;
+          var productionValue = null;
+
+          if (isoAlpha3) {
+            var matchingData = data.find(function (dataItem) {
+              return (
+                dataItem.iso_code === isoAlpha3 &&
+                dataItem.year === yearSelected && // Use the selected year
+                dataItem.fuel === fuelSelectedD // Use the selected fuel
+              );
+            });
+
+            if (matchingData) {
+              productionValue = matchingData.production;
+            }
+          }
+          console.log("colorScaleNew", productionValue);
+          return newColorScale(productionValue);
+        });
+      }
+
+      //UPDATE MAP KRAJ
+
+      // Generate options for years from 1990 to 2021
+      for (var year = 1990; year <= 2021; year++) {
+        var option = document.createElement("option");
+        option.value = year;
+        option.text = year;
+        selectYear.appendChild(option);
+      }
+
+      // Listen for changes to the selected year and update the chart
+      selectYear.addEventListener("change", function () {
+        // Get the selected year
+        var selectedYear = parseInt(this.value);
+        yearSelected = selectedYear;
+        fuelSelected = defaultFuelType;
+        selectedFuel = defaultFuelType;
+        fuelSelectedD=defaultFuelType;
+        // Filter the dataset based on the selected year
+        var filteredData = dataset.filter(function (d) {
+          return d.year === selectedYear && d.fuel === selectedFuel;
+        });
+
+        // Update the map and bar chart with the filtered data
+        updateBarChart(filteredData);
+      });
+      document
+        .getElementById("fuel-type")
+        .addEventListener("change", function () {
+          var selectedFuel = this.value;
+
+          // Filter the dataset based on the selected fuel type
+          var filteredData = dataset.filter(function (d) {
+            return d.year === 1996 && d.fuel === selectedFuel;
+          });
+          console.log("new data:");
+          console.log(filteredData);
+
+          // Update the map and bar chart with the filtered data
+          updateBarChart(filteredData);
+        });
+      //UPDATE END
 
       // Calculate the maximum production value from the dataset
       var maxProduction = d3.max(dataset, function (d) {
         return d.production;
       });
-      console.log("max prod: ",maxProduction);
+      console.log("max prod: ", maxProduction);
       // Define the color scale based on the maximum production value
       var colorScale = d3
         .scaleOrdinal()
@@ -112,16 +478,16 @@
           var isoAlpha3 = country["alpha-3"];
           colorData[isoAlpha3] = d.fuel === "coal" ? d.production : 0;
 
-          console.log(
-            "Fuel:",
-            d.fuel,
-            "Production:",
-            d.production,
-            "Country:",
-            country,
-            "year",
-            d.year
-          );
+          // console.log(
+          //   "Fuel:",
+          //   d.fuel,
+          //   "Production:",
+          //   d.production,
+          //   "Country:",
+          //   country,
+          //   "year",
+          //   d.year
+          // );
         }
       });
 
@@ -187,7 +553,6 @@
             .html(d.name);
         })
         .on("mouseout", function (d, i) {
-          
           tooltip.classed("hidden", true);
         })
         .on("click", function (d) {
@@ -203,7 +568,7 @@
       var y = (bounds[0][1] + bounds[1][1]) / 2;
       var scale = Math.max(
         1,
-        Math.min(8, 0.9 / Math.max(dx / width, dy / height))
+        Math.min(2, 0.9 / Math.max(dx / width, dy / height))
       );
       var translate = [width / 2 - scale * x, height / 2 - scale * y];
 
@@ -219,5 +584,34 @@
     function zoomed() {
       svg.selectAll("path").attr("transform", d3.event.transform);
     }
+
+    // Set a default fuel type
+
+    // Get the select elements
+    var selectYear = document.getElementById("select-year");
+    var selectFuelType = document.getElementById("fuel-type");
+
+    // Generate options for years from 1990 to 2021
+    for (var year = 1990; year <= 2021; year++) {
+      var option = document.createElement("option");
+      option.value = year;
+      option.text = year;
+      selectYear.appendChild(option);
+    }
+
+    // // Listen for changes to the selected year and fuel type, and update the chart
+    // selectYear.addEventListener("change", function () {
+    //   var selectedYear = parseInt(this.value);
+    //   var selectedFuel = selectFuelType.value; // Get the selected fuel type
+    //   var filteredData = filterData(selectedYear, selectedFuel); // Use your filter function
+    //   updateBarChart(filteredData); // Update the bar chart
+    // });
+
+    // selectFuelType.addEventListener("change", function () {
+    //   var selectedFuel = this.value;
+    //   var selectedYear = parseInt(selectYear.value); // Get the selected year
+    //   var filteredData = filterData(selectedYear, selectedFuel); // Use your filter function
+    //   updateBarChart(filteredData); // Update the bar chart
+    // });
   </script>
 </body>
